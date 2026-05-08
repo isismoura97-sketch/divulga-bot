@@ -68,32 +68,39 @@ def increment_msg_count(telegram_id: int):
 def add_user_channel(telegram_id: int, channel_id: str, channel_name: str = None, channel_type: str = "channel"):
     """Adiciona um canal para o usuário divulgar"""
     try:
-        # Verifica limite de canais por plano
+        # 1. Garante que o usuário existe no banco
         user = get_or_create_user(telegram_id, "", "")
-        limits = get_user_limits(user["plan"])
+        
+        # 2. Verifica limite de canais por plano
+        limits = get_user_limits(user.get("plan", "free"))
         active_count = get_active_channels_count(telegram_id)
         
         if active_count >= limits["channels"]:
             return False, f"⚠️ Limite de canais atingido ({active_count}/{limits['channels']}).\nFaça upgrade para adicionar mais!"
         
-        # Verifica se já existe
+        # 3. Verifica se já existe
         existing = supabase.table("user_channels").select("id").eq("telegram_id", telegram_id).eq("channel_id", channel_id).execute()
         if existing.data and len(existing.data) > 0:
-            # Reativa se estava desativado
             supabase.table("user_channels").update({"is_active": True}).eq("id", existing.data[0]["id"]).execute()
             return True, "✅ Canal reativado!"
         
-        # Adiciona novo canal
+        # 4. Insere novo canal
         result = supabase.table("user_channels").insert({
             "telegram_id": telegram_id,
             "channel_id": channel_id,
             "channel_name": channel_name,
             "channel_type": channel_type
         }).execute()
+        
         return True, "✅ Canal adicionado com sucesso!" if result.data else (False, "❌ Erro ao adicionar canal")
+        
     except Exception as e:
+        err_str = str(e)
+        # Captura especificamente o erro de chave estrangeira (23503)
+        if "23503" in err_str or "foreign key" in err_str.lower():
+            return False, "⚠️ Usuário não encontrado no banco.\nPor favor, envie /start primeiro!"
         print(f"❌ Erro ao adicionar canal: {e}")
-        return False, f"❌ Erro: {str(e)}"
+        return False, f"❌ Erro interno: {str(e)[:50]}..."
 
 def remove_user_channel(telegram_id: int, channel_id: str):
     """Remove/desativa um canal do usuário"""
