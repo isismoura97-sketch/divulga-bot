@@ -168,8 +168,6 @@ async def close_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def add_channel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/add_canal @usuario_ou_id"""
     user = update.effective_user
-    db_user = get_or_create_user(user.id, user.username)
-    limits = get_user_limits(db_user["plan"])
     
     if not context.args:
         await update.message.reply_text(
@@ -177,24 +175,30 @@ async def add_channel_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             "💡 Para adicionar um canal:\n"
             "1. Adicione @divulgaai_chefebot como administrador no canal\n"
             "2. Use o comando com o @ ou ID do canal",
-            parse_mode=ParseMode.MARKDOWN,
+            parse_mode="Markdown",
             reply_markup=MENU_PRINCIPAL
         )
         return
     
     channel_input = context.args[0]
-    
-    # Tenta obter info do canal (requer que o bot seja admin)
     channel_name = None
     channel_type = "channel"
     
-    success, message = add_user_channel(user.id, channel_input, channel_name, channel_type)
-    
-    await update.message.reply_text(
-        message,
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=MENU_PRINCIPAL
-    )
+    try:
+        success, message = add_user_channel(user.id, channel_input, channel_name, channel_type)
+        
+        # SEM parse_mode para evitar erro de Markdown
+        await update.message.reply_text(
+            str(message),
+            reply_markup=MENU_PRINCIPAL
+        )
+    except Exception as e:
+        logger.error(f"Erro ao adicionar canal: {e}")
+        # SEM parse_mode para mensagens de erro
+        await update.message.reply_text(
+            f"❌ Erro: {str(e)}",
+            reply_markup=MENU_PRINCIPAL
+        )
 
 async def list_channels_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/meus_canais"""
