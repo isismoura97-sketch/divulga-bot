@@ -10,8 +10,14 @@ from typing import List, Dict, Any
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters, CallbackQueryHandler
 from telegram.constants import ParseMode
-import mercadopago
-from dotenv import load_dotenv
+# Importação Segura: O bot inicia mesmo se a lib falhar
+try:
+    import mercadopago
+    from PIL import Image
+    HAS_MP = True
+except ImportError:
+    HAS_MP = False
+    logging.warning("⚠️ Biblioteca 'mercadopago' ou 'pillow' não encontrada. Pagamentos desativados.")from dotenv import load_dotenv
 
 from db import (
     get_or_create_user, can_send_message, increment_msg_count, log_message,
@@ -30,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 # Mercado Pago
 MP_TOKEN = os.getenv("MP_ACCESS_TOKEN")
-mp_sdk = mercadopago.SDK(MP_TOKEN) if MP_TOKEN else None
+mp_sdk = mercadopago.SDK(MP_TOKEN) if (MP_TOKEN and HAS_MP) else None
 if not mp_sdk:
     logger.warning("️ MP_ACCESS_TOKEN não configurado. Comando /upgrade não gerará pagamentos.")
 
