@@ -10,6 +10,8 @@ from typing import List, Dict, Any
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters, CallbackQueryHandler
 from telegram.constants import ParseMode
+from dotenv import load_dotenv
+
 # Importação Segura: O bot inicia mesmo se a lib falhar
 try:
     import mercadopago
@@ -17,7 +19,7 @@ try:
     HAS_MP = True
 except ImportError:
     HAS_MP = False
-    logging.warning("⚠️ Biblioteca 'mercadopago' ou 'pillow' não encontrada. Pagamentos desativados.")from dotenv import load_dotenv
+    logging.warning("⚠️ Biblioteca 'mercadopago' ou 'pillow' não encontrada. Pagamentos desativados.")
 
 from db import (
     get_or_create_user, can_send_message, increment_msg_count, log_message,
@@ -37,8 +39,8 @@ logger = logging.getLogger(__name__)
 # Mercado Pago
 MP_TOKEN = os.getenv("MP_ACCESS_TOKEN")
 mp_sdk = mercadopago.SDK(MP_TOKEN) if (MP_TOKEN and HAS_MP) else None
-if not mp_sdk:
-    logger.warning("️ MP_ACCESS_TOKEN não configurado. Comando /upgrade não gerará pagamentos.")
+if not mp_sdk and HAS_MP:
+    logger.warning("⚠️ MP_ACCESS_TOKEN não configurado. Comando /upgrade não gerará pagamentos.")
 
 # Menus
 MENU_PRINCIPAL = ReplyKeyboardMarkup([
@@ -57,7 +59,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         limits = get_user_limits(db_user.get("plan", "free"))
         channels_count = get_active_channels_count(user.id)
         
-        # Monta info de expiração
         expires = db_user.get("plan_expires_at")
         expire_msg = "♾️ Permanente"
         if expires:
@@ -71,11 +72,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"🤖 *Olá, {user.first_name}!*\n\n"
-        f" *Seu Plano:* `{PLANS_CONFIG.get(db_user.get('plan', 'free'), {}).get('name', 'Free')}`\n"
+        f"📦 *Seu Plano:* `{PLANS_CONFIG.get(db_user.get('plan', 'free'), {}).get('name', 'Free')}`\n"
         f"📅 *Validade:* {expire_msg}\n"
         f"📤 *Envios hoje:* `{db_user.get('msgs_sent', 0)}/{limits['daily_msgs']}`\n"
         f"🔗 *Canais configurados:* `{channels_count}/{limits['channels']}`\n"
-        f"️ *Mídia:* {'✅' if limits['media'] else '❌'}\n"
+        f"🖼️ *Mídia:* {'✅' if limits['media'] else '❌'}\n"
         f"⏰ *Agendamento:* {'✅' if limits['schedule'] else '❌'}\n\n"
         f"💡 *Como usar:*\n"
         f"1. Adicione canais: `/add_canal @seucanal`\n"
@@ -110,7 +111,7 @@ async def trial_24h(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db_user = get_or_create_user(user.id, user.username)
     
     if db_user["plan"] != "free":
-        await update.message.reply_text("️ Você já possui um plano ativo. Use `/status` para verificar.", reply_markup=MENU_PRINCIPAL)
+        await update.message.reply_text("⚠️ Você já possui um plano ativo. Use `/status` para verificar.", reply_markup=MENU_PRINCIPAL)
         return
         
     activate_plan(user.id, "free_24h", duration_days=1)
@@ -131,8 +132,8 @@ async def planos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🟢 Teste 24h GRÁTIS", callback_data="trial_info")],
         [InlineKeyboardButton("🟡 Semanal - R$5,00", callback_data="pay_weekly")],
         [InlineKeyboardButton("🔵 Starter - R$19,90/mês", callback_data="pay_starter")],
-        [InlineKeyboardButton(" Pro - R$49,90/mês", callback_data="pay_pro")],
-        [InlineKeyboardButton("💳 Ver métodos de pagamento", callback_data="payment_methods")]
+        [InlineKeyboardButton("🔴 Pro - R$49,90/mês", callback_data="pay_pro")],
+        [InlineKeyboardButton(" Ver métodos de pagamento", callback_data="payment_methods")]
     ]
     await update.message.reply_text(
         "📦 *Nossos Planos:*\n\n"
@@ -175,7 +176,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📱 *Menu Principal:*\nEscolha uma opção ", reply_markup=MENU_PRINCIPAL)
+    await update.message.reply_text("📱 *Menu Principal:*\nEscolha uma opção 👇", reply_markup=MENU_PRINCIPAL)
 
 async def close_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Menu fechado. Digite `/menu` para abrir novamente.", reply_markup=MENU_FECHADO)
@@ -226,7 +227,7 @@ async def schedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     content, time_str = args.rsplit(" ", 1)
     if ":" not in time_str:
-        await update.message.reply_text("️ Horário inválido. Use HH:MM", reply_markup=MENU_PRINCIPAL)
+        await update.message.reply_text("⚠️ Horário inválido. Use HH:MM", reply_markup=MENU_PRINCIPAL)
         return
     
     try:
@@ -236,7 +237,10 @@ async def schedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             send_time += timedelta(days=1)
         
         result = schedule_message(user.id, content, send_time.isoformat())
-        await update.message.reply_text(f"✅ Agendado para `{send_time.strftime('%d/%m %H:%M')}`", parse_mode=ParseMode.MARKDOWN, reply_markup=MENU_PRINCIPAL) if result else await update.message.reply_text("❌ Erro ao agendar.", reply_markup=MENU_PRINCIPAL)
+        if result:
+            await update.message.reply_text(f"✅ Agendado para `{send_time.strftime('%d/%m %H:%M')}`", parse_mode=ParseMode.MARKDOWN, reply_markup=MENU_PRINCIPAL)
+        else:
+            await update.message.reply_text("❌ Erro ao agendar.", reply_markup=MENU_PRINCIPAL)
     except Exception as e:
         logger.error(f"Erro agendar: {e}")
         await update.message.reply_text("❌ Erro interno.", reply_markup=MENU_PRINCIPAL)
@@ -251,7 +255,7 @@ async def payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if query.data == "trial_info":
         await query.edit_message_text(
-            "🟢 *Teste 24h GRÁTIS*\n\n"
+            " *Teste 24h GRÁTIS*\n\n"
             "• 20 mensagens/dia\n"
             "• 2 canais configuráveis\n"
             "• Envio de fotos e vídeos\n"
@@ -263,7 +267,7 @@ async def payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     if query.data == "payment_methods":
         await query.edit_message_text(
-            "💳 *Métodos de Pagamento:*\n\n"
+            " *Métodos de Pagamento:*\n\n"
             "✅ PIX (Aprovação instantânea)\n"
             "✅ Cartão de Crédito\n"
             "✅ Boleto Bancário\n\n"
@@ -272,7 +276,6 @@ async def payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Mapeamento de preços
     plans = {
         "pay_weekly": {"price": 5.00, "name": "Semanal", "days": 7},
         "pay_starter": {"price": 19.90, "name": "Starter", "days": None},
@@ -286,7 +289,7 @@ async def payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("️ Pagamento não configurado no servidor.")
         return
 
-    await query.edit_message_text(" Gerando PIX... Aguarde.")
+    await query.edit_message_text("🔄 Gerando PIX... Aguarde.")
 
     try:
         preference_data = {
@@ -301,7 +304,6 @@ async def payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             body = response["response"]
             link = body.get("init_point", "")
             
-            # Tenta extrair QR Code
             qr_b64 = None
             pix_code = ""
             try:
@@ -322,13 +324,10 @@ async def payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.message.reply_photo(photo=io.BytesIO(img_data), caption=caption, parse_mode=ParseMode.MARKDOWN)
             else:
                 caption = (f"✅ *Plano {plan_info['name']}*\n"
-                           f" R${plan_info['price']:.2f}\n"
+                           f"💰 R${plan_info['price']:.2f}\n"
                            f"🔗 [Pagar no Mercado Pago]({link})\n\n"
                            f"⚠️ A ativação é automática após confirmação.")
                 await query.message.reply_text(caption, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
-                
-            # Nota: Em produção, um Webhook atualizaria o plano automaticamente.
-            # Por enquanto, o admin pode ativar manualmente ou implementar o webhook depois.
         else:
             await query.message.reply_text("❌ Erro ao gerar preferência.")
     except Exception as e:
@@ -336,7 +335,6 @@ async def payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("❌ Falha na conexão com Mercado Pago.")
 
 async def plan_info_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Handler fallback para outros botões
     await update.callback_query.answer()
 
 # ==================== MANIPULADOR DE MENSAGENS ====================
@@ -353,7 +351,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     channels = get_user_channels(user_id)
     if not channels:
-        await update.message.reply_text("️ Nenhum canal configurado! Use `/add_canal @seucanal`", reply_markup=MENU_PRINCIPAL)
+        await update.message.reply_text("⚠️ Nenhum canal configurado! Use `/add_canal @seucanal`", reply_markup=MENU_PRINCIPAL)
         return
 
     content = msg.text or msg.caption or ""
@@ -376,7 +374,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if queue_item:
         increment_msg_count(user_id)
-        await update.message.reply_text(f"✅ Enviado para {len(target_ids)} canal(is)!\n Uso: `{get_or_create_user(user_id, '')['msgs_sent']}/{limits['daily_msgs']}`", reply_markup=MENU_PRINCIPAL)
+        await update.message.reply_text(f"✅ Enviado para {len(target_ids)} canal(is)!\n📊 Uso: `{get_or_create_user(user_id, '')['msgs_sent']}/{limits['daily_msgs']}`", reply_markup=MENU_PRINCIPAL)
 
 # ==================== FILA & AGENDAMENTOS (BACKGROUND) ====================
 async def process_send_queue(app):
@@ -423,7 +421,6 @@ def main():
 
     app = ApplicationBuilder().token(token).build()
 
-    # Comandos
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("ajuda", help_command))
     app.add_handler(CommandHandler("planos", planos))
@@ -437,15 +434,12 @@ def main():
     app.add_handler(CommandHandler("agendar", schedule_command))
     app.add_handler(CommandHandler("upgrade", upgrade_command))
 
-    # Callbacks
     app.add_handler(CallbackQueryHandler(payment_callback, pattern="^(pay_|trial_info|payment_methods)"))
     app.add_handler(CallbackQueryHandler(plan_info_callback, pattern="^(plan_)"))
 
-    # Mensagens
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.Document.ALL, handle_message))
 
-    # Jobs
     if app.job_queue:
         app.job_queue.run_repeating(lambda ctx: asyncio.create_task(process_send_queue(app)), interval=30, first=10)
         app.job_queue.run_repeating(lambda ctx: asyncio.create_task(process_scheduled(app)), interval=60, first=30)
