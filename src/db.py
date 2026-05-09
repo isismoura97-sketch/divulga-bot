@@ -12,12 +12,16 @@ supabase: Client = create_client(
 )
 
 # ==================== USUÁRIOS ====================
-def get_or_create_user(telegram_id: int, username: str, full_name: str = None):
+ef get_or_create_user(telegram_id: int, username: str, full_name: str = None):
+    """Cria ou busca usuário no Supabase - versão blindada"""
     try:
+        # Tenta buscar usuário existente
         response = supabase.table("users").select("*").eq("telegram_id", telegram_id).execute()
         
+        # Se encontrou, retorna
         if response.data and len(response.data) > 0:
             user = response.data[0]
+            # Reseta contagem diária se necessário
             if user.get("last_reset") != date.today().isoformat():
                 supabase.table("users").update({
                     "msgs_sent": 0,
@@ -26,20 +30,27 @@ def get_or_create_user(telegram_id: int, username: str, full_name: str = None):
                 user["msgs_sent"] = 0
             return user
         
+        # Se não encontrou, cria novo usuário (apenas campos essenciais)
         new_user = {
             "telegram_id": telegram_id,
             "username": username,
-            "full_name": full_name,
             "plan": "free",
             "msgs_sent": 0,
             "last_reset": date.today().isoformat()
         }
+        # Adiciona full_name apenas se existir na tabela
+        try:
+            new_user["full_name"] = full_name
+        except:
+            pass  # Ignora se a coluna não existir
+            
         result = supabase.table("users").insert(new_user).execute()
-        return result.data[0] if result.data else new_user
+        return result.data[0] if result.data else {"telegram_id": telegram_id, "plan": "free", "msgs_sent": 0}
         
     except Exception as e:
         print(f"❌ Erro no db.py (get_or_create_user): {e}")
-        return {"telegram_id": telegram_id, "plan": "free", "msgs_sent": 0}
+        # Retorna um usuário "fictício" para o bot não travar
+        return {"telegram_id": telegram_id, "plan": "free", "msgs_sent": 0, "username": username}
 
 def get_user_limits(plan: str) -> dict:
     return {
