@@ -2,5 +2,5 @@ python-dotenv
 python-telegram-bot[job-queue]
 supabase
 httpx
-mercadopago==2.0.8 
-pillow==10.2.0 
+mercadopago==2.0.8
+pillow>=10.4.0
